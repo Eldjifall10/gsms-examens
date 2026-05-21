@@ -799,10 +799,26 @@ body.role-restricted #nav-config-btn{ display: none !important; }
     <div class="card">
       <div class="card-header">
         <h2 id="saisie-title">Liste des candidats</h2>
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="text" id="search-input" placeholder="🔍 Rechercher un candidat..."
             style="padding:7px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:13px;outline:none;width:220px;"
             oninput="renderSaisieTable()">
+          <select id="filter-sexe" onchange="renderSaisieTable()"
+            style="padding:7px 10px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:13px;outline:none;background:white;cursor:pointer;">
+            <option value="">👤 Tous (sexe)</option>
+            <option value="M">👦 Garçons</option>
+            <option value="F">👧 Filles</option>
+          </select>
+          <select id="filter-decision" onchange="renderSaisieTable()"
+            style="padding:7px 10px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:13px;outline:none;background:white;cursor:pointer;">
+            <option value="">🎯 Toutes décisions</option>
+            <option value="admis">✅ Admis</option>
+            <option value="repech">🔄 Repêchable</option>
+            <option value="2tour">🔁 2ème Tour</option>
+            <option value="ajourn">❌ Ajourné</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" onclick="resetFilters()" title="Effacer les filtres"
+            style="padding:7px 10px;font-size:13px;">✖ Réinitialiser</button>
           <button class="btn btn-sm btn-outline" onclick="exportSerie()">📥 Export série</button>
         </div>
       </div>
@@ -1941,6 +1957,16 @@ function onExamChange() {
 
 function onSerieChange() { renderSaisieTable(); }
 
+function resetFilters() {
+  var s  = document.getElementById('search-input');
+  var fs = document.getElementById('filter-sexe');
+  var fd = document.getElementById('filter-decision');
+  if (s)  s.value  = '';
+  if (fs) fs.value = '';
+  if (fd) fd.value = '';
+  renderSaisieTable();
+}
+
 function renderSaisieTable() {
   const examId = document.getElementById('sel-exam').value;
   const serie = document.getElementById('sel-serie').value;
@@ -1952,10 +1978,29 @@ function renderSaisieTable() {
   document.getElementById('saisie-title').textContent =
     `${exam?.type} ${exam?.num} — Série ${serie} (${cands.length} candidat${cands.length>1?'s':''})`;
 
-  if (search) cands = cands.filter(c =>
-    (c.prenom+' '+c.nom).toLowerCase().includes(search) ||
-    (c.ntable||'').toLowerCase().includes(search)
-  );
+  // Apply all filters
+  if (search || fSexe || fDecision) {
+    cands = cands.filter(function(c) {
+      // Search by name, table number, anonymat
+      if (search) {
+        var full = ((c.prenom||'')+' '+(c.nom||'')+' '+(c.ntable||'')+' '+(c.nanon||'')).toLowerCase();
+        if (!full.includes(search)) return false;
+      }
+      // Filter by sexe
+      if (fSexe && (c.sexe||'') !== fSexe) return false;
+      // Filter by decision
+      if (fDecision) {
+        var moy = calcMoyenne(c.notes||[], coefs, c.eps||'apte');
+        var dec = getDecision(moy, exam ? exam.type||'BAC' : 'BAC');
+        var lbl = dec.label.toLowerCase();
+        if (fDecision === 'admis'  && !lbl.includes('admis'))   return false;
+        if (fDecision === 'repech' && !lbl.includes('rep'))     return false;
+        if (fDecision === '2tour'  && !lbl.includes('2'))       return false;
+        if (fDecision === 'ajourn' && !lbl.includes('ajourn'))  return false;
+      }
+      return true;
+    });
+  }
 
   // Header
   document.getElementById('saisie-thead').innerHTML = `
@@ -2206,6 +2251,7 @@ function renderResults() {
   // filter
   if (filter === 'admis') enriched = enriched.filter(c => c.dec.label.includes('Admis'));
   else if (filter === 'repech') enriched = enriched.filter(c => c.dec.label.includes('Repêch'));
+  else if (filter === '2tour') enriched = enriched.filter(c => c.dec.label.includes('2ème'));
   else if (filter === 'ajourn') enriched = enriched.filter(c => c.dec.label.includes('Ajourné'));
 
   document.getElementById('results-title').textContent =
@@ -2213,15 +2259,22 @@ function renderResults() {
 
   // Stats bar
   const total = cands.length;
-  const admis = enriched.filter ? cands.filter(c => {
-    const m = calcMoyenne(c.notes||[],coefs,c.eps||'apte');
-    return getDecision(m,exam?.type).label.includes('Admis');
-  }).length : 0;
-  const repech = cands.filter(c => {
-    const m = calcMoyenne(c.notes||[],coefs,c.eps||'apte');
-    return getDecision(m,exam?.type).label.includes('Repêch');
+  const admis = cands.filter(c => {
+    const m = calcMoyenne(c.notes||[], coefs, c.eps||'apte');
+    return getDecision(m, exam?.type||'BAC').label.includes('Admis');
   }).length;
-  const ajourn = total - admis - repech;
+  const repech = cands.filter(c => {
+    const m = calcMoyenne(c.notes||[], coefs, c.eps||'apte');
+    return getDecision(m, exam?.type||'BAC').label.includes('Repêch');
+  }).length;
+  const tour2 = cands.filter(c => {
+    const m = calcMoyenne(c.notes||[], coefs, c.eps||'apte');
+    return getDecision(m, exam?.type||'BAC').label.includes('2ème');
+  }).length;
+  const ajourn = cands.filter(c => {
+    const m = calcMoyenne(c.notes||[], coefs, c.eps||'apte');
+    return getDecision(m, exam?.type||'BAC').label.includes('Ajourné');
+  }).length;
   const moyArr = cands.map(c => calcMoyenne(c.notes||[],coefs,c.eps||'apte')).filter(m => m !== null);
   const moyClasse = moyArr.length ? (moyArr.reduce((a,b)=>a+b,0)/moyArr.length).toFixed(2) : '—';
 
@@ -3017,52 +3070,203 @@ function doImport() {
 // EXPORT EXCEL
 // ═══════════════════════════════════════════════════════════════
 
-function exportExcel() {
-  const workbook = XLSX.utils.book_new();
-  DB.exams.forEach(exam => {
-    const series = exam.type === 'BAC' ? Object.keys(SERIES_BAC) : Object.keys(SERIES_BFEM);
-    series.forEach(serie => {
-      const cands = getCandidats(exam.id, serie);
-      if (!cands.length) return;
-      const {matieres, coefs} = getMatieresCoefs(exam.id, serie);
-      const header = ['N°','Prénom','Nom','Date Nais.','Lieu Nais.','Classe','Sexe','N° Table','N° Anon.','EPS',
-        ...matieres, 'Moyenne', 'Décision', 'Mention'];
-      const rows = cands.map((c, i) => {
-        const moy = calcMoyenne(c.notes||[], coefs, c.eps||'apte');
-        const dec = getDecision(moy, exam.type);
-        const men = getMention(moy);
-        return [i+1, c.prenom, c.nom, c.ddn||'', c.lieu||'', c.classe||'', c.sexe||'',
-          c.ntable||'', c.nanon||'', c.eps||'apte',
-          ...(c.notes||[]), moy!==null?moy:'', dec.label.replace(/[✅🔄❌]/g,'').trim(), men.label.replace(/[🏆⭐👍✔️]/g,'').trim()];
-      });
-      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-      const sheetName = `${exam.type}_${exam.num}_${serie}`.replace(/[^a-zA-Z0-9_]/g,'').slice(0,31);
-      XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+// ── HELPER: Build a formatted sheet for one serie ────────────────
+function buildFormattedSheet(exam, serie, sortByRank) {
+  var cands = getCandidats(exam.id, serie);
+  if (!cands.length) return null;
+  var mc = getMatieresCoefs(exam.id, serie);
+  var matieres = mc.matieres, coefs = mc.coefs;
+  var school = DB.config.school || 'GSMS Excellence Seydina Limamoulaye';
+  var ief    = DB.config.ief    || 'Keur Massar';
+  var ia     = DB.config.ia     || 'Pikine/Guédiawaye';
+  var annee  = DB.config.annee  || '2025/2026';
+  var dateExp = new Date().toLocaleDateString('fr-FR');
+
+  // Compute totals
+  var enriched = cands.map(function(c) {
+    var t = calcTotals(c.notes||[], coefs, c.eps||'apte');
+    return Object.assign({}, c, {
+      moy: t.moy, totalPts: t.totalPts, totalCoef: t.totalCoef, bonusEPS: t.bonusEPS||0,
+      dec: getDecision(t.moy, exam.type),
+      men: getMention(t.moy)
     });
   });
-  XLSX.writeFile(workbook, `GSMS_Examens_${new Date().toISOString().slice(0,10)}.xlsx`);
+  if (sortByRank) {
+    enriched.sort(function(a,b){ return (b.moy||0)-(a.moy||0); });
+  }
+  enriched.forEach(function(c,i){ c.rang = c.moy !== null ? i+1 : '—'; });
+
+  // Stats
+  var total   = enriched.length;
+  var admis   = enriched.filter(function(c){ return c.dec.label.includes('Admis'); }).length;
+  var repech  = enriched.filter(function(c){ return c.dec.label.includes('Repêch'); }).length;
+  var tour2   = enriched.filter(function(c){ return c.dec.label.includes('2ème'); }).length;
+  var ajourn  = enriched.filter(function(c){ return c.dec.label.includes('Ajourné'); }).length;
+  var moyArr  = enriched.filter(function(c){ return c.moy !== null; }).map(function(c){ return c.moy; });
+  var moyClasse = moyArr.length ? (moyArr.reduce(function(a,b){return a+b;},0)/moyArr.length).toFixed(2) : '—';
+  var taux    = total ? Math.round((admis+repech)/total*100) + '%' : '—';
+
+  // Build AOA (Array of Arrays)
+  var aoa = [];
+
+  // Row 1: Etablissement
+  aoa.push([school]);
+  // Row 2: IEF / IA
+  aoa.push(['IEF: ' + ief + '     IA: ' + ia]);
+  // Row 3: Annee scolaire
+  aoa.push(['Année Scolaire: ' + annee + '     Exporté le: ' + dateExp]);
+  // Row 4: empty
+  aoa.push([]);
+  // Row 5: Exam info
+  aoa.push([exam.type + ' BLANC N°' + exam.num + ' — SESSION ' + (exam.session||'').toUpperCase() + ' — SÉRIE ' + serie]);
+  // Row 6: empty
+  aoa.push([]);
+
+  // Header row
+  var headerCols = ['Rang','N° Table','N° Anon.','Prénom','Nom','Date Nais.','Lieu Nais.','Classe','Sexe','EPS'];
+  headerCols = headerCols.concat(matieres);
+  headerCols.push('Bonus EPS', 'Total Pts', 'Coef', 'Moy./20', 'Décision', 'Mention');
+  aoa.push(headerCols);
+  var headerRowIdx = aoa.length; // 1-based for xlsx
+
+  // Data rows
+  enriched.forEach(function(c) {
+    var row = [
+      c.rang, c.ntable||'', c.nanon||'', c.prenom||'', c.nom||'',
+      c.ddn||'', c.lieu||'', c.classe||'', c.sexe||'', c.eps||'apte'
+    ];
+    row = row.concat(c.notes||[]);
+    row.push(
+      c.bonusEPS > 0 ? c.bonusEPS : '',
+      c.totalPts !== null ? parseFloat(c.totalPts.toFixed(1)) : '',
+      c.totalCoef||'',
+      c.moy !== null ? c.moy : '',
+      c.dec.label.replace(/[✅🔄❌🔁🔄]/g,'').trim(),
+      c.men.label.replace(/[🏆⭐👍✔️]/g,'').trim()
+    );
+    aoa.push(row);
+  });
+
+  // Empty row before stats
+  aoa.push([]);
+
+  // Stats rows
+  aoa.push(['STATISTIQUES']);
+  aoa.push(['Total inscrits:', total, '', 'Admis 1er Tour:', admis, '', 'Repêchables:', repech]);
+  aoa.push(['2ème Tour:', tour2, '', 'Ajournés:', ajourn, '', 'Taux réussite:', taux]);
+  aoa.push(['Moyenne classe:', moyClasse]);
+
+  // Create sheet
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Column widths
+  var colWidths = [6,10,10,16,16,12,16,10,6,8];
+  matieres.forEach(function(){ colWidths.push(14); });
+  colWidths.push(9, 10, 6, 8, 16, 14);
+  ws['!cols'] = colWidths.map(function(w){ return {wch: w}; });
+
+  // Style header row (row index = headerRowIdx, 0-based = headerRowIdx-1)
+  // XLSX.js basic styling via cell properties
+  var range = XLSX.utils.decode_range(ws['!ref']);
+  var headerR = headerRowIdx - 1; // 0-based
+
+  for (var C = range.s.c; C <= range.e.c; C++) {
+    // Header cells
+    var hAddr = XLSX.utils.encode_cell({r: headerR, c: C});
+    if (!ws[hAddr]) ws[hAddr] = {v: '', t: 's'};
+    ws[hAddr].s = {
+      fill: {fgColor: {rgb: '0D1B3E'}},
+      font: {bold: true, color: {rgb: 'FFFFFF'}, sz: 11},
+      alignment: {horizontal: 'center', vertical: 'center', wrapText: true},
+      border: {top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}}
+    };
+
+    // Data rows styling based on decision
+    for (var R = headerR + 1; R <= range.e.r; R++) {
+      var addr = XLSX.utils.encode_cell({r: R, c: C});
+      if (!ws[addr]) continue;
+      var decCol = headerCols.indexOf('Décision');
+      var decAddr = XLSX.utils.encode_cell({r: R, c: decCol});
+      var decVal = ws[decAddr] ? String(ws[decAddr].v||'') : '';
+      var fillColor = 'FFFFFF';
+      if (decVal.includes('Admis'))   fillColor = 'F0FFF4'; // vert pale
+      if (decVal.includes('Repêch'))  fillColor = 'FFFDE7'; // jaune pale
+      if (decVal.includes('2ème'))    fillColor = 'FFF3E0'; // orange pale
+      if (decVal.includes('Ajourné')) fillColor = 'FFF5F5'; // rouge pale
+      ws[addr].s = {
+        fill: {fgColor: {rgb: fillColor}},
+        alignment: {horizontal: 'center', vertical: 'center'},
+        border: {top:{style:'thin',color:{rgb:'E2E8F0'}},bottom:{style:'thin',color:{rgb:'E2E8F0'}},
+                 left:{style:'thin',color:{rgb:'E2E8F0'}},right:{style:'thin',color:{rgb:'E2E8F0'}}}
+      };
+    }
+  }
+
+  // Title rows styling
+  for (var r2 = 0; r2 < 5; r2++) {
+    var tAddr = XLSX.utils.encode_cell({r: r2, c: 0});
+    if (ws[tAddr]) {
+      ws[tAddr].s = {
+        font: {bold: r2===0||r2===4, sz: r2===0?14:r2===4?12:11, color: {rgb: r2===4?'2563EB':'0D1B3E'}},
+        alignment: {horizontal: 'left'}
+      };
+    }
+  }
+
+  // Merge title cells
+  var lastCol = headerCols.length - 1;
+  ws['!merges'] = [
+    {s:{r:0,c:0}, e:{r:0,c:lastCol}},
+    {s:{r:1,c:0}, e:{r:1,c:lastCol}},
+    {s:{r:2,c:0}, e:{r:2,c:lastCol}},
+    {s:{r:4,c:0}, e:{r:4,c:lastCol}},
+  ];
+
+  // Row heights
+  ws['!rows'] = [];
+  ws['!rows'][0] = {hpt: 24}; // school name
+  ws['!rows'][4] = {hpt: 20}; // exam info
+  ws['!rows'][headerR] = {hpt: 30}; // header
+
+  return ws;
+}
+
+function exportExcel() {
+  var workbook = XLSX.utils.book_new();
+  var added = 0;
+  DB.exams.forEach(function(exam) {
+    var series = exam.type === 'BAC' ? Object.keys(SERIES_BAC) : Object.keys(SERIES_BFEM);
+    series.forEach(function(serie) {
+      var ws = buildFormattedSheet(exam, serie, false);
+      if (!ws) return;
+      var sheetName = (exam.type+'_'+exam.num+'_'+serie).replace(/[^a-zA-Z0-9_]/g,'').slice(0,31);
+      XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+      added++;
+    });
+  });
+  if (!added) { alert('Aucune donnée à exporter.'); return; }
+  var fname = 'GSMS_Examens_' + new Date().toISOString().slice(0,10) + '.xlsx';
+  if (window.electronAPI) {
+    var wbData = XLSX.write(workbook, {type:'array', bookType:'xlsx'});
+    window.electronAPI.saveFile({defaultName: fname, buffer: Array.from(new Uint8Array(wbData))})
+      .then(function(r){ if(r.ok) alert('Fichier enregistré : ' + r.path); });
+  } else {
+    XLSX.writeFile(workbook, fname);
+  }
 }
 
 function exportSerie() {
-  const examId = document.getElementById('sel-exam').value;
-  const serie = document.getElementById('sel-serie').value;
-  const exam = DB.exams.find(e => e.id === examId);
-  const cands = getCandidats(examId, serie);
-  const {matieres, coefs} = getMatieresCoefs(examId, serie);
-  const header = ['N°','Prénom','Nom','Date Nais.','Lieu Nais.','Classe','Sexe','N° Table','N° Anon.','EPS',
-    ...matieres,'Moyenne','Décision','Mention'];
-  const rows = cands.map((c,i) => {
-    const moy = calcMoyenne(c.notes||[],coefs,c.eps||'apte');
-    const dec = getDecision(moy, exam?.type||'BAC');
-    const men = getMention(moy);
-    return [i+1,c.prenom,c.nom,c.ddn||'',c.lieu||'',c.classe||'',c.sexe||'',
-      c.ntable||'',c.nanon||'',c.eps||'apte',...(c.notes||[]),
-      moy!==null?moy:'',dec.label.replace(/[✅🔄❌]/g,'').trim(),men.label.replace(/[🏆⭐👍✔️]/g,'').trim()];
-  });
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([header,...rows]);
-  XLSX.utils.book_append_sheet(wb, ws, serie);
-  XLSX.writeFile(wb, `${exam?.type}_${exam?.num}_${serie}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  var examId = document.getElementById('sel-exam').value;
+  var serie  = document.getElementById('sel-serie').value;
+  var exam   = DB.exams.find(function(e){ return e.id === examId; });
+  if (!exam) { alert('Sélectionnez un examen.'); return; }
+  var wb = XLSX.utils.book_new();
+  var ws = buildFormattedSheet(exam, serie, false);
+  if (!ws) { alert('Aucun candidat dans cette série.'); return; }
+  var sheetName = serie.replace(/[^a-zA-Z0-9_]/g,'').slice(0,31) || 'Feuil1';
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  var fname = exam.type+'_'+exam.num+'_'+serie+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+  XLSX.writeFile(wb, fname);
 }
 
 function exportResults() {
@@ -3072,29 +3276,15 @@ function exportResults() {
 }
 
 function exportSerieDirect(examId, serie) {
-  const exam = DB.exams.find(e => e.id === examId);
-  const cands = getCandidats(examId, serie);
-  const {matieres, coefs} = getMatieresCoefs(examId, serie);
-  const sorted = [...cands].map(c => {
-    const moy = calcMoyenne(c.notes||[],coefs,c.eps||'apte');
-    return {...c, moy};
-  }).sort((a,b) => (b.moy||0)-(a.moy||0));
-
-  const header = ['Rang','N° Table','N° Anon.','Prénom','Nom','Classe','Sexe',...matieres,'Total Pts','Moy./20','Décision','Mention'];
-  const rows = sorted.map((c,i) => {
-    const eTotals = calcTotals(c.notes||[], coefs, c.eps||'apte');
-    const dec = getDecision(eTotals.moy !== null ? eTotals.moy : c.moy, exam?.type||'BAC');
-    const men = getMention(eTotals.moy !== null ? eTotals.moy : c.moy);
-    const totalPts = eTotals.totalPts;
-    const totalCoef = eTotals.totalCoef;
-    return [i+1,c.ntable||'',c.nanon||'',c.prenom,c.nom,c.classe||'',c.sexe||'',
-      ...(c.notes||[]),totalPts.toFixed(1),c.moy!==null?c.moy:'',
-      dec.label.replace(/[✅🔄❌]/g,'').trim(),men.label.replace(/[🏆⭐👍✔️]/g,'').trim()];
-  });
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([header,...rows]);
-  XLSX.utils.book_append_sheet(wb, ws, `Résultats_${serie}`);
-  XLSX.writeFile(wb, `Résultats_${exam?.type}_${exam?.num}_${serie}.xlsx`);
+  var exam = DB.exams.find(function(e){ return e.id === examId; });
+  if (!exam) return;
+  var wb = XLSX.utils.book_new();
+  var ws = buildFormattedSheet(exam, serie, true); // sorted by rank
+  if (!ws) { alert('Aucun candidat dans cette série.'); return; }
+  var sheetName = ('Resultats_'+serie).replace(/[^a-zA-Z0-9_]/g,'').slice(0,31);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  var fname = 'Resultats_'+exam.type+'_'+exam.num+'_'+serie+'.xlsx';
+  XLSX.writeFile(wb, fname);
 }
 
 function exportAll() {
