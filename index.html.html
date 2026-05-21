@@ -1449,8 +1449,8 @@ const SERIES_BAC = {
 
 const SERIES_BFEM = {
   "3ème": {
-    matieres: ["Comp. Français","Dictée","TSQ","SVT","Mathématiques","Anglais Écrit","Anglais Oral","LV2","Histoire-Géo","Éd. Civique","Sport","EPS"],
-    coefs:    [2, 1, 1, 2, 2, 3, 2, 1, 2, 1, 2, 2]
+    matieres: ["Comp. Français","Dictée","TSQ","SVT","Mathématiques","Anglais Écrit","Anglais Oral","LV2","Histoire-Géo","Éd. Civique","Sc. Physique","EPS"],
+    coefs:    [2, 1, 1, 2, 3, 2, 1, 2, 2, 1, 2, 2]
   }
 };
 
@@ -1733,19 +1733,53 @@ function setCandidats(examId, serie, arr) {
 }
 
 function calcTotals(notes, coefs, epsStatut) {
-  // Returns {totalPts, totalCoef, moy} with correct EPS inapte handling
-  var totalPts = 0, totalCoef = 0;
+  // Regles officielles BAC/BFEM Senegal:
+  // - EPS est TOUJOURS exclue du totalCoef et du totalPts
+  // - Si apte ET note EPS >= 10 : bonus = note - 10 (ajoute au total)
+  // - Si inapte OU note EPS < 10 : pas de bonus
+  // - Case vide, "abs", "absent" → 0 point, coefficient COMPTE
+  // - Toutes autres matieres → note x coef
+
+  var totalPts = 0, totalCoef = 0, bonusEPS = 0;
+  var epsIndex = notes.length - 1; // EPS = derniere matiere
+
   for (var i = 0; i < notes.length; i++) {
-    var isEPS = (i === notes.length - 1);
-    if (isEPS && epsStatut === 'inapte') continue;
+    var isEPS = (i === epsIndex);
+
+    // EPS : toujours exclue du calcul principal
+    if (isEPS) {
+      // Bonus seulement si apte ET note >= 10
+      if (epsStatut !== 'inapte') {
+        var nEPS = notes[i];
+        var nEPSStr = (nEPS === null || nEPS === undefined) ? '' : String(nEPS).toLowerCase().trim();
+        var valEPS = (nEPSStr === '' || nEPSStr === 'abs' || nEPSStr === 'absent' || nEPSStr === '-')
+                    ? 0 : parseFloat(nEPS);
+        if (!isNaN(valEPS) && valEPS >= 10) {
+          bonusEPS = valEPS - 10;
+        }
+      }
+      continue; // ne pas compter coef EPS dans totalCoef
+    }
+
+    // Autres matieres
     var n = notes[i];
-    if (n === '' || n === null || n === undefined) { totalCoef += coefs[i]; continue; }
-    if (String(n).toLowerCase().trim() === 'absent') { totalCoef += coefs[i]; continue; }
-    var val = parseFloat(n);
-    if (!isNaN(val)) { totalPts += val * coefs[i]; totalCoef += coefs[i]; }
+    var nStr = (n === null || n === undefined) ? '' : String(n).toLowerCase().trim();
+    var val = (nStr === '' || nStr === '-' || nStr === 'abs' || nStr === 'absent')
+              ? 0 : parseFloat(n);
+    if (isNaN(val)) val = 0;
+
+    totalCoef += coefs[i];
+    totalPts  += val * coefs[i];
   }
-  var moy = totalCoef === 0 ? null : Math.round((totalPts / totalCoef) * 100) / 100;
-  return { totalPts: totalPts, totalCoef: totalCoef, moy: moy };
+
+  var totalAvecBonus = totalPts + bonusEPS;
+  var moy = totalCoef === 0 ? null : Math.round((totalAvecBonus / totalCoef) * 100) / 100;
+  return {
+    totalPts:  totalAvecBonus,
+    bonusEPS:  bonusEPS,
+    totalCoef: totalCoef,
+    moy:       moy
+  };
 }
 
 function calcMoyenne(notes, coefs, epsStatut) {
@@ -1771,13 +1805,12 @@ function getDecision(moy, examType) {
 // Points manquants pour être admis (Repêchable uniquement)
 // Formule: 240 - Total Points (BFEM) ou selon total coef (BAC)
 function getPointsJury(dec, totalPts, totalCoef) {
-  // Points jury = seulement pour les Repêchables
-  // Formule: (totalCoef × 10) - totalPts = points manquants pour être admis
+  // Points jury = seulement pour les Repechables
+  // Formule: (totalCoef x 10) - totalPts
   if (!dec || !dec.label || !dec.label.includes('Repêchable')) return '';
   var seuil = totalCoef * 10;
   var manquants = seuil - totalPts;
   if (manquants <= 0) return '';
-  // Round to nearest integer (as shown in the Excel example)
   return '-' + Math.round(manquants);
 }
 
@@ -2799,7 +2832,7 @@ function resetCoefs(type, serie) {
     "bac_L2":  { mats:["Philosophie","Francais","Mathematiques","Histoire-Geo","LV1 Ecrit","LV2/Eco","PC/SVT","EPS"], coefs:[6,5,2,6,4,2,2,6] },
     "bac_S1":  { mats:["Philosophie","Francais","Mathematiques","Histoire-Geo","Physique-Chim.","SVT","EPS"], coefs:[2,2,5,3,4,4,4] },
     "bac_S2":  { mats:["Philosophie","Francais","Mathematiques","Histoire-Geo","Anglais","Physique-Chim.","SVT","EPS"], coefs:[2,2,5,3,2,5,3,4] },
-    "bfem_3eme": { mats:["Comp. Francais","Dictee","TSQ","SVT","Mathematiques","Anglais Ecrit","Anglais Oral","LV2","Histoire-Geo","Ed. Civique","Sport","EPS"], coefs:[2,1,1,2,2,3,2,1,2,1,2,2] }
+    "bfem_3eme": { mats:["Comp. Francais","Dictee","TSQ","SVT","Mathematiques","Anglais Ecrit","Anglais Oral","LV2","Histoire-Geo","Ed. Civique","Sc. Physique","EPS"], coefs:[2,1,1,2,3,2,1,2,2,1,2,2] }
   };
   var key = type + '_' + serie.replace(/[^a-z0-9]/gi,'_').replace("'","").toLowerCase();
   var bkey = type + "_" + serie.toLowerCase().replace(/[^a-z0-9]/g,'');
