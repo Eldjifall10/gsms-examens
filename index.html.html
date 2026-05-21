@@ -305,6 +305,8 @@ tbody td:first-child { text-align: left; }
 .badge-admis { background: var(--green-pale); color: var(--green); }
 .badge-repech { background: var(--gold-pale); color: var(--gold); }
 .badge-ajourn { background: var(--red-pale); color: var(--red); }
+.badge-2tour  { background: #fff7ed; color: #c2410c; }
+.row-2tour    { background: #fff7ed !important; }
 .badge-blue { background: var(--blue-pale); color: var(--blue); }
 .badge-violet { background: var(--violet-pale); color: var(--violet); }
 .badge-gray { background: var(--gray-100); color: var(--gray-600); }
@@ -1730,27 +1732,53 @@ function setCandidats(examId, serie, arr) {
   saveDBWithCandidats(examId, serie, arr);
 }
 
-function calcMoyenne(notes, coefs, epsStatut) {
-  let totalPts = 0, totalCoef = 0;
-  for (let i = 0; i < notes.length; i++) {
-    const isEPS = (i === notes.length - 1);
+function calcTotals(notes, coefs, epsStatut) {
+  // Returns {totalPts, totalCoef, moy} with correct EPS inapte handling
+  var totalPts = 0, totalCoef = 0;
+  for (var i = 0; i < notes.length; i++) {
+    var isEPS = (i === notes.length - 1);
     if (isEPS && epsStatut === 'inapte') continue;
-    const n = notes[i];
-    if (n === '' || n === null || n === undefined) { totalPts += 0; totalCoef += coefs[i]; continue; }
+    var n = notes[i];
+    if (n === '' || n === null || n === undefined) { totalCoef += coefs[i]; continue; }
     if (String(n).toLowerCase().trim() === 'absent') { totalCoef += coefs[i]; continue; }
-    const val = parseFloat(n);
+    var val = parseFloat(n);
     if (!isNaN(val)) { totalPts += val * coefs[i]; totalCoef += coefs[i]; }
   }
-  if (totalCoef === 0) return null;
-  return Math.round((totalPts / totalCoef) * 100) / 100;
+  var moy = totalCoef === 0 ? null : Math.round((totalPts / totalCoef) * 100) / 100;
+  return { totalPts: totalPts, totalCoef: totalCoef, moy: moy };
+}
+
+function calcMoyenne(notes, coefs, epsStatut) {
+  return calcTotals(notes, coefs, epsStatut).moy;
 }
 
 function getDecision(moy, examType) {
   if (moy === null) return {label:'—', cls:'badge-gray'};
-  const seuil = examType === 'BFEM' ? 9 : 9;
   if (moy >= 10) return {label:'✅ Admis(e)', cls:'badge-admis', row:'row-admis'};
-  if (moy >= seuil) return {label:'🔄 Repêchable', cls:'badge-repech', row:'row-repech'};
-  return {label:'❌ Ajourné(e)', cls:'badge-ajourn', row:'row-ajourn'};
+  if (examType === 'BFEM') {
+    // BFEM : Admis >= 10 | Repêchable >= 9.5 | 2ème Tour >= 8 | Ajourné < 8
+    if (moy >= 9.5) return {label:'🔄 Repêchable', cls:'badge-repech', row:'row-repech'};
+    if (moy >= 8)   return {label:'🔁 2ème Tour',   cls:'badge-2tour',  row:'row-2tour'};
+    return {label:'❌ Ajourné(e)', cls:'badge-ajourn', row:'row-ajourn'};
+  } else {
+    // BAC : Admis >= 10 | Repêchable >= 9.5 | 2ème Tour >= 8 | Ajourné < 8
+    if (moy >= 9.5) return {label:'🔄 Repêchable', cls:'badge-repech', row:'row-repech'};
+    if (moy >= 8)   return {label:'🔁 2ème Tour',   cls:'badge-2tour',  row:'row-2tour'};
+    return {label:'❌ Ajourné(e)', cls:'badge-ajourn', row:'row-ajourn'};
+  }
+}
+
+// Points manquants pour être admis (Repêchable uniquement)
+// Formule: 240 - Total Points (BFEM) ou selon total coef (BAC)
+function getPointsJury(dec, totalPts, totalCoef) {
+  // Points jury = seulement pour les Repêchables
+  // Formule: (totalCoef × 10) - totalPts = points manquants pour être admis
+  if (!dec || !dec.label || !dec.label.includes('Repêchable')) return '';
+  var seuil = totalCoef * 10;
+  var manquants = seuil - totalPts;
+  if (manquants <= 0) return '';
+  // Round to nearest integer (as shown in the Excel example)
+  return '-' + Math.round(manquants);
 }
 
 function getMention(moy) {
@@ -1902,7 +1930,7 @@ function renderSaisieTable() {
       <th>#</th><th>Candidat</th><th>Classe</th><th>Sexe</th>
       <th>N° Table</th><th>EPS</th>
       ${matieres.map((m,i)=>`<th title="${m}">${m.split(' ')[0]}<br><small>c${coefs[i]}</small></th>`).join('')}
-      <th>Moy.</th><th>Décision</th><th>Mention</th><th>Actions</th>
+      <th>Total Pts</th><th>Moy.</th><th>Décision</th><th>Pts Jury</th><th>Mention</th><th>Actions</th>
     </tr>`;
 
   // Pre-compute permission flags for action buttons
@@ -1915,10 +1943,13 @@ function renderSaisieTable() {
   } else {
     document.getElementById('saisie-empty').style.display = 'none';
     tbody.innerHTML = cands.map((c, idx) => {
-      const moy = calcMoyenne(c.notes||[], coefs, c.eps||'apte');
+      const notes = (c.notes||[]);
+      const totals = calcTotals(notes, coefs, c.eps||'apte');
+      const moy = totals.moy;
+      const totalPts = totals.totalPts;
+      const totalCoef = totals.totalCoef;
       const dec = getDecision(moy, exam?.type||'BAC');
       const men = getMention(moy);
-      const notes = (c.notes||[]);
       return `
         <tr class="${dec.row||''} ${idx%2?'tr-even':''}">
           <td style="color:var(--gray-400);font-size:12px;">${idx+1}</td>
@@ -1937,8 +1968,10 @@ function renderSaisieTable() {
             const cls = isNaN(v) ? '' : v>=10 ? 'color:var(--green);font-weight:700;' : 'color:var(--red);font-weight:700;';
             return `<td style="${cls}">${nStr}</td>`;
           }).join('')}
+          <td style="font-weight:700;font-size:12px;">${totalPts.toFixed(1)}</td>
           <td style="font-size:16px;font-weight:800;color:var(--navy);">${moy!==null?moy.toFixed(2):'—'}</td>
           <td><span class="badge ${dec.cls}">${dec.label}</span></td>
+          <td style="font-weight:700;color:#c2410c;">${getPointsJury(dec,totalPts,totalCoef)}</td>
           <td><span class="${men.cls}" style="font-size:12px;">${men.label}</span></td>
           <td>
             <div style="display:flex;gap:4px;">
@@ -2161,10 +2194,10 @@ function renderResults() {
 
   document.getElementById('results-stats').innerHTML = `
     <div class="stat-card"><div class="stat-icon blue">👥</div><div><div class="stat-value">${total}</div><div class="stat-label">Inscrits</div></div></div>
-    <div class="stat-card"><div class="stat-icon green">✅</div><div><div class="stat-value">${admis}</div><div class="stat-label">Admis</div><div class="stat-sub">${total?Math.round(admis/total*100):0}%</div></div></div>
-    <div class="stat-card"><div class="stat-icon gold">🔄</div><div><div class="stat-value">${repech}</div><div class="stat-label">Repêchables</div></div></div>
+    <div class="stat-card"><div class="stat-icon green">✅</div><div><div class="stat-value">${admis}</div><div class="stat-label">Admis 1er Tour</div><div class="stat-sub">${total?Math.round(admis/total*100):0}%</div></div></div>
+    <div class="stat-card"><div class="stat-icon gold">🔄</div><div><div class="stat-value">${repech}</div><div class="stat-label">Repêchables</div><div class="stat-sub">${total?Math.round(repech/total*100):0}%</div></div></div>
+    <div class="stat-card"><div class="stat-icon orange">🔁</div><div><div class="stat-value">${tour2}</div><div class="stat-label">2ème Tour</div><div class="stat-sub">${total?Math.round(tour2/total*100):0}%</div></div></div>
     <div class="stat-card"><div class="stat-icon red">❌</div><div><div class="stat-value">${ajourn}</div><div class="stat-label">Ajournés</div></div></div>
-    <div class="stat-card"><div class="stat-icon blue">📊</div><div><div class="stat-value">${moyClasse}</div><div class="stat-label">Moy. de classe</div></div></div>
     <div class="stat-card"><div class="stat-icon violet">📈</div><div><div class="stat-value">${total?Math.round((admis+repech)/total*100):0}%</div><div class="stat-label">Taux réussite</div></div></div>
   `;
 
@@ -2174,7 +2207,7 @@ function renderResults() {
       <th>Rang</th><th>N° Table</th><th>N° Anon.</th><th>Prénom Nom</th>
       <th>Classe</th><th>Sexe</th>
       ${matieres.map((m,i) => `<th>${m.split(' ')[0]}<br><small>c${coefs[i]}</small></th>`).join('')}
-      <th>Total Pts</th><th>Moy./20</th><th>Décision</th><th>Mention</th>
+      <th>Total Pts</th><th>Moy./20</th><th>Décision</th><th>Pts Jury</th><th>Mention</th>
     </tr>`;
 
   if (!enriched.length) {
@@ -2183,9 +2216,9 @@ function renderResults() {
   } else {
     document.getElementById('results-empty').style.display = 'none';
     document.getElementById('results-tbody').innerHTML = enriched.map((c,idx) => {
-      const totalPts = (c.notes||[]).reduce((acc, n, i) => {
-        const v = parseFloat(n); return acc + (isNaN(v)?0:v*coefs[i]);
-      }, 0);
+      const resTotals = calcTotals(c.notes||[], coefs, c.eps||'apte');
+      const totalPts  = resTotals.totalPts;
+      const totalCoef2 = resTotals.totalCoef;
       return `
         <tr class="${c.dec.row||''} ${idx%2?'tr-even':''}">
           <td style="font-weight:800;color:${c.rang<=3?'var(--gold)':'var(--navy)'};">${c.rang}</td>
@@ -2201,6 +2234,7 @@ function renderResults() {
           <td style="font-weight:700;">${totalPts.toFixed(1)}</td>
           <td style="font-size:16px;font-weight:800;color:var(--navy);">${c.moy!==null?c.moy.toFixed(2):'—'}</td>
           <td><span class="badge ${c.dec.cls}">${c.dec.label}</span></td>
+          <td style="font-weight:700;color:#c2410c;">${getPointsJury(c.dec,totalPts,totalCoef2)}</td>
           <td><span class="${c.men.cls}">${c.men.label}</span></td>
         </tr>`;
     }).join('');
@@ -3015,9 +3049,11 @@ function exportSerieDirect(examId, serie) {
 
   const header = ['Rang','N° Table','N° Anon.','Prénom','Nom','Classe','Sexe',...matieres,'Total Pts','Moy./20','Décision','Mention'];
   const rows = sorted.map((c,i) => {
-    const dec = getDecision(c.moy, exam?.type||'BAC');
-    const men = getMention(c.moy);
-    const totalPts = (c.notes||[]).reduce((acc,n,j) => acc+(isNaN(parseFloat(n))?0:parseFloat(n)*coefs[j]),0);
+    const eTotals = calcTotals(c.notes||[], coefs, c.eps||'apte');
+    const dec = getDecision(eTotals.moy !== null ? eTotals.moy : c.moy, exam?.type||'BAC');
+    const men = getMention(eTotals.moy !== null ? eTotals.moy : c.moy);
+    const totalPts = eTotals.totalPts;
+    const totalCoef = eTotals.totalCoef;
     return [i+1,c.ntable||'',c.nanon||'',c.prenom,c.nom,c.classe||'',c.sexe||'',
       ...(c.notes||[]),totalPts.toFixed(1),c.moy!==null?c.moy:'',
       dec.label.replace(/[✅🔄❌]/g,'').trim(),men.label.replace(/[🏆⭐👍✔️]/g,'').trim()];
@@ -3399,6 +3435,12 @@ function lockApp() {
   if (overlay) overlay.classList.remove('hidden');
 }
 
+function unlockApp() {
+  var overlay = document.getElementById('auth-overlay');
+  if (overlay) overlay.classList.add('hidden');
+  initApp();
+}
+
 function doLogout() {
   if (!confirm('Voulez-vous vous deconnecter ?')) return;
   try { sessionStorage.removeItem('gsms_auth'); } catch(e) {}
@@ -3510,9 +3552,9 @@ function showCandidateCard(candidatId) {
   const moy = calcMoyenne(c.notes||[], coefs, c.eps||'apte');
   const dec = getDecision(moy, exam?.type||'BAC');
   const men = getMention(moy);
-  const totalPts = (c.notes||[]).reduce((acc,n,j) => {
-    const v = parseFloat(n); return acc + (isNaN(v)?0:v*coefs[j]);
-  }, 0);
+  const cardTotals = calcTotals(c.notes||[], coefs, c.eps||'apte');
+  const totalPts  = cardTotals.totalPts;
+  const totalCoef = cardTotals.totalCoef;
 
   // QR data
   const qrData = JSON.stringify({
