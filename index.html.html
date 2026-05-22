@@ -2219,7 +2219,9 @@ function resetFilters() {
 function renderSaisieTable() {
   const examId = document.getElementById('sel-exam').value;
   const serie = document.getElementById('sel-serie').value;
-  const search = document.getElementById('search-input').value.toLowerCase();
+  const search    = (document.getElementById('search-input') ? document.getElementById('search-input').value.toLowerCase().trim() : '');
+  const fSexe     = (document.getElementById('filter-sexe')    ? document.getElementById('filter-sexe').value    : '');
+  const fDecision = (document.getElementById('filter-decision') ? document.getElementById('filter-decision').value : '');
   const exam = DB.exams.find(e => e.id === examId);
   const {matieres, coefs} = getMatieresCoefs(examId, serie);
   let cands = getCandidats(examId, serie);
