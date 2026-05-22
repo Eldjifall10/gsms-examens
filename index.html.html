@@ -6,6 +6,7 @@
 <title>GSMS Excellence — Gestion des Examens Blancs</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- Supabase via REST API - no CDN needed -->
 <script>
 /* ── Minimal QR Code Generator (Pure JS, no dependencies) ─────────────
@@ -560,6 +561,47 @@ body.role-restricted .btn-danger    { display: none !important; }
 body.role-restricted .admin-only    { display: none !important; }
 body.role-restricted #nav-config-btn{ display: none !important; }
 
+
+/* ─── DARK MODE ───────────────────────────────────────────── */
+body.dark-mode {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --gray-50: #1e293b;
+  --gray-100: #334155;
+  --gray-200: #475569;
+  --gray-400: #94a3b8;
+  --gray-500: #94a3b8;
+  --gray-600: #cbd5e1;
+  --navy: #93c5fd;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+body.dark-mode .card { background: #1e293b; border-color: #334155; }
+body.dark-mode .topbar { background: #0f172a; border-color: #1e293b; }
+body.dark-mode .sidebar { background: #0f172a; border-color: #1e293b; }
+body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
+  background: #1e293b; color: #e2e8f0; border-color: #475569;
+}
+body.dark-mode table thead tr { background: #1e293b; }
+body.dark-mode .modal { background: #1e293b; }
+body.dark-mode .nav-item { color: #cbd5e1; }
+body.dark-mode .nav-item:hover, body.dark-mode .nav-item.active { background: #334155; }
+body.dark-mode .auth-box { background: #1e293b; }
+body.dark-mode #dark-mode-btn { color: #fbbf24 !important; }
+
+/* ─── DARK MODE ─────────────────────────────────────────────── */
+body.dark-mode { --gray-50:#1e293b; --gray-100:#1e293b; --gray-200:#334155; --gray-300:#475569; --white:#1e293b; background:#0f172a; color:#e2e8f0; }
+body.dark-mode .sidebar { background:#0d1b3e; }
+body.dark-mode .topbar { background:#0d1b3e; border-color:#1e3a6e; }
+body.dark-mode .card { background:#1e293b; border-color:#334155; }
+body.dark-mode .modal { background:#1e293b; }
+body.dark-mode input, body.dark-mode select { background:#0f172a; color:#e2e8f0; border-color:#334155; }
+body.dark-mode table { color:#e2e8f0; }
+body.dark-mode th { background:#0d1b3e; }
+body.dark-mode td { border-color:#334155; }
+body.dark-mode .nav-item { color:#94a3b8; }
+body.dark-mode .nav-item:hover, body.dark-mode .nav-item.active { background:rgba(255,255,255,0.1); color:white; }
+
 /* ─── PRINT ──────────────────────────────────────────────────── */
 @media print {
   .sidebar, .topbar, .no-print { display: none !important; }
@@ -735,10 +777,14 @@ body.role-restricted #nav-config-btn{ display: none !important; }
 <div class="main">
   <div class="topbar">
     <h1 id="page-title">Tableau de bord</h1>
-    <div class="session-info" id="current-session-label">BAC Blanc N°1 — Mars 2026</div>
+    <div class="session-info" id="current-session-label">
+    <span id="save-indicator" style="display:none;font-size:11px;padding:3px 10px;border-radius:20px;margin-left:8px;font-weight:600;transition:all 0.3s;"></span>BAC Blanc N°1 — Mars 2026</div>
     <button class="btn-export" onclick="exportExcel()">📥 Export Excel</button>
     <button class="btn-export" style="background:var(--red)" onclick="window.print()">🖨️ Imprimer</button>
-    <div id="user-badge" style="display:flex;align-items:center;gap:8px;margin-left:8px;padding-left:16px;border-left:1px solid var(--gray-200);">
+    <button onclick="toggleDarkMode()" id="dark-mode-btn" title="Mode sombre"
+  style="background:none;border:none;cursor:pointer;font-size:18px;padding:4px 8px;border-radius:8px;color:var(--gray-600);">🌙</button>
+<button onclick="openGlobalSearch()" title="Recherche globale" style="background:none;border:none;cursor:pointer;font-size:18px;padding:4px 8px;border-radius:8px;color:var(--gray-600);">🔍</button>
+<div id="user-badge" style="display:flex;align-items:center;gap:8px;margin-left:8px;padding-left:16px;border-left:1px solid var(--gray-200);">
       <span id="role-badge" style="font-size:11px;padding:3px 10px;border-radius:20px;color:white;font-weight:700;"></span>
     </div>
   </div>
@@ -820,6 +866,8 @@ body.role-restricted #nav-config-btn{ display: none !important; }
           <button class="btn btn-sm btn-ghost" onclick="resetFilters()" title="Effacer les filtres"
             style="padding:7px 10px;font-size:13px;">✖ Réinitialiser</button>
           <button class="btn btn-sm btn-outline" onclick="exportSerie()">📥 Export série</button>
+          <button class="btn btn-sm btn-ghost" onclick="printCurrentList()" title="Imprimer la liste">🖨️ Imprimer</button>
+          <button class="btn btn-sm btn-ghost" onclick="printCandidateList()" title="Imprimer la liste">🖨️</button>
         </div>
       </div>
       <div class="card-body" style="padding:0;">
@@ -879,14 +927,27 @@ body.role-restricted #nav-config-btn{ display: none !important; }
   <div class="page" id="page-stats">
     <div class="stats-grid" id="stats-global-cards"></div>
 
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+      <div class="card" style="padding:16px;">
+        <h3 style="font-size:14px;color:var(--navy);margin-bottom:8px;">📊 Candidats par série</h3>
+        <canvas id="chart-series" width="400" height="220" style="max-width:100%;"></canvas>
+      </div>
+      <div class="card" style="padding:16px;">
+        <h3 style="font-size:14px;color:var(--navy);margin-bottom:8px;">🥧 Répartition décisions</h3>
+        <canvas id="chart-decisions" width="400" height="220" style="max-width:100%;"></canvas>
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
       <div class="card">
         <div class="card-header"><h2>📊 Taux de réussite par série</h2></div>
-        <div class="card-body" id="stats-series"></div>
+        <div class="card-body" id="stats-series">
+          <canvas id="chart-series" height="220"></canvas>
+        </div>
       </div>
       <div class="card">
         <div class="card-header"><h2>🏅 Distribution des mentions</h2></div>
-        <div class="card-body" id="stats-mentions"></div>
+        <div class="card-body" id="stats-mentions"><canvas id="chart-mentions" height="220"></canvas</div>
       </div>
     </div>
 
@@ -1037,6 +1098,24 @@ body.role-restricted #nav-config-btn{ display: none !important; }
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
       <button class="btn btn-ghost" onclick="closeModal('modal-add')">Annuler</button>
       <button class="btn btn-primary" onclick="saveCandidat()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ MODAL RECHERCHE GLOBALE -->
+<div class="modal-overlay" id="modal-global-search" style="display:none;">
+  <div class="modal" style="max-width:700px;max-height:80vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <h3>🔍 Recherche globale — Toutes séries</h3>
+      <button class="modal-close" onclick="closeModal('modal-global-search')">✕</button>
+    </div>
+    <div style="padding:16px;border-bottom:1px solid var(--gray-200);">
+      <input type="text" id="global-search-input" placeholder="Rechercher par nom, prénom, N° table, N° anonymat..."
+        style="width:100%;padding:10px 14px;border:1.5px solid var(--blue);border-radius:10px;font-size:14px;outline:none;"
+        oninput="doGlobalSearch()">
+    </div>
+    <div id="global-search-results" style="overflow-y:auto;flex:1;padding:12px;">
+      <p style="color:var(--gray-400);text-align:center;padding:24px;">Tapez pour rechercher...</p>
     </div>
   </div>
 </div>
@@ -1337,6 +1416,10 @@ function initSupabase() {
 }
 
 
+// Offline/Online detection
+window.addEventListener('online',  function() { setSyncStatus('syncing'); if(supabaseReady) loadFromSupabase(); });
+window.addEventListener('offline', function() { setSyncStatus('offline'); });
+
 function setSyncStatus(status, msg) {
   syncStatus = status;
   var el = document.getElementById('sync-indicator');
@@ -1607,9 +1690,47 @@ function initDB() {
   };
 }
 
+function showSaveIndicator() {
+  var ind = document.getElementById('save-indicator');
+  if (!ind) {
+    ind = document.createElement('div');
+    ind.id = 'save-indicator';
+    ind.style.cssText = 'position:fixed;bottom:70px;right:24px;z-index:99997;background:#16a34a;color:white;padding:8px 14px;border-radius:20px;font-size:12px;font-weight:600;font-family:DM Sans,Arial,sans-serif;display:none;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+    ind.innerHTML = '✅ Sauvegardé';
+    document.body.appendChild(ind);
+  }
+  ind.style.display = 'flex';
+  clearTimeout(ind._t);
+  ind._t = setTimeout(function(){ ind.style.display='none'; }, 2000);
+}
+
+function showSaveIndicator(status) {
+  var ind = document.getElementById('save-indicator');
+  if (!ind) return;
+  if (status === 'saving') {
+    ind.textContent = '💾 Sauvegarde...';
+    ind.style.display = 'inline-block';
+    ind.style.background = '#fef3c7';
+    ind.style.color = '#92400e';
+  } else if (status === 'saved') {
+    ind.textContent = '✅ Sauvegardé';
+    ind.style.display = 'inline-block';
+    ind.style.background = '#dcfce7';
+    ind.style.color = '#16a34a';
+    setTimeout(function(){ ind.style.display = 'none'; }, 2500);
+  } else if (status === 'error') {
+    ind.textContent = '❌ Erreur sync';
+    ind.style.display = 'inline-block';
+    ind.style.background = '#fee2e2';
+    ind.style.color = '#dc2626';
+  }
+}
+
 function saveDB() {
   // Always save locally first (instant, offline-safe)
   try { localStorage.setItem('gsms_examens_v2', JSON.stringify(DB)); } catch(e) {}
+  showSaveIndicator('saving');
+  showSaveIndicator();
   // Then sync to Supabase using direct fetch (reliable)
   if (supabaseReady && SUPABASE_URL && SUPABASE_ANON) {
     setSyncStatus('syncing');
@@ -1957,6 +2078,134 @@ function onExamChange() {
 
 function onSerieChange() { renderSaisieTable(); }
 
+function printCurrentList() {
+  var examId = document.getElementById('sel-exam').value;
+  var serie  = document.getElementById('sel-serie').value;
+  var exam   = DB.exams.find(function(e){ return e.id===examId; });
+  if (!exam) { alert('Sélectionnez un examen.'); return; }
+  var cands  = getCandidats(examId, serie);
+  var mc     = getMatieresCoefs(examId, serie);
+  var school = DB.config.school || 'GSMS Excellence';
+  var win    = window.open('', '_blank');
+  var rows   = cands.map(function(c, i) {
+    var t = calcTotals(c.notes||[], mc.coefs, c.eps||'apte');
+    var dec = getDecision(t.moy, exam.type);
+    var color = dec.label.includes('Admis') ? '#16a34a' :
+                dec.label.includes('Repêch') ? '#d97706' :
+                dec.label.includes('2ème') ? '#ea580c' : '#dc2626';
+    return '<tr style="border-bottom:1px solid #e2e8f0;">' +
+      '<td style="padding:6px 8px;text-align:center;">'+(i+1)+'</td>' +
+      '<td style="padding:6px 8px;">'+(c.ntable||'')+'</td>' +
+      '<td style="padding:6px 8px;">'+(c.nanon||'')+'</td>' +
+      '<td style="padding:6px 8px;font-weight:600;">'+(c.prenom||'')+' '+(c.nom||'')+'</td>' +
+      '<td style="padding:6px 8px;">'+(c.classe||'')+'</td>' +
+      (c.notes||[]).map(function(n){ return '<td style="padding:6px 8px;text-align:center;">'+(n||'')+'</td>'; }).join('') +
+      '<td style="padding:6px 8px;text-align:center;font-weight:700;">'+(t.moy!==null?t.moy:'—')+'</td>' +
+      '<td style="padding:6px 8px;font-weight:700;color:'+color+';">'+dec.label.replace(/[✅🔄❌🔁]/g,'').trim()+'</td>' +
+      '</tr>';
+  }).join('');
+  var header = '<tr style="background:#0d1b3e;color:white;">' +
+    '<th style="padding:8px;">#</th><th>N°Tab</th><th>N°Anon</th><th>Candidat</th><th>Classe</th>' +
+    mc.matieres.map(function(m){ return '<th style="padding:8px;font-size:11px;">'+m.split(' ')[0]+'</th>'; }).join('') +
+    '<th>Moy</th><th>Décision</th></tr>';
+  win.document.write('<html><head><title>'+school+' — '+exam.type+' N°'+exam.num+' — Série '+serie+'</title>' +
+    '<style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px;}' +
+    'table{width:100%;border-collapse:collapse;}th{padding:8px;}' +
+    '@media print{button{display:none;}}</style></head><body>' +
+    '<h2 style="color:#0d1b3e;">'+school+'</h2>' +
+    '<h3>'+exam.type+' Blanc N°'+exam.num+' — '+exam.session+' — Série '+serie+'</h3>' +
+    '<p>Total: '+cands.length+' candidats — Imprimé le '+new Date().toLocaleDateString('fr-FR')+'</p>' +
+    '<button onclick="window.print()" style="margin-bottom:10px;padding:8px 16px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;">🖨️ Imprimer</button>' +
+    '<table>'+header+rows+'</table></body></html>');
+  win.document.close();
+}
+
+function goToCandidat() {
+  var modal = document.getElementById('modal-global-search');
+  if (modal) modal.style.display = 'none';
+  showPage('saisie');
+}
+
+function openGlobalSearch() {
+  openModal('modal-global-search');
+  setTimeout(function(){
+    var inp = document.getElementById('global-search-input');
+    if (inp) { inp.value = ''; inp.focus(); }
+    document.getElementById('global-search-results').innerHTML =
+      '<p style="color:var(--gray-400);text-align:center;padding:24px;">Tapez pour rechercher...</p>';
+  }, 100);
+}
+
+function doGlobalSearch() {
+  var query = (document.getElementById('global-search-input').value||'').toLowerCase().trim();
+  var resultsDiv = document.getElementById('global-search-results');
+  if (!query || query.length < 2) {
+    resultsDiv.innerHTML = '<p style="color:var(--gray-400);text-align:center;padding:24px;">Tapez au moins 2 caractères...</p>';
+    return;
+  }
+  var results = [];
+  DB.exams.forEach(function(exam) {
+    var series = exam.type === 'BAC' ? Object.keys(SERIES_BAC) : Object.keys(SERIES_BFEM);
+    series.forEach(function(serie) {
+      var cands = getCandidats(exam.id, serie);
+      var mc = getMatieresCoefs(exam.id, serie);
+      cands.forEach(function(c) {
+        var full = ((c.prenom||'')+' '+(c.nom||'')+' '+(c.ntable||'')+' '+(c.nanon||'')).toLowerCase();
+        if (full.includes(query)) {
+          var moy = calcMoyenne(c.notes||[], mc.coefs, c.eps||'apte');
+          var dec = getDecision(moy, exam.type);
+          results.push({c:c, exam:exam, serie:serie, moy:moy, dec:dec});
+        }
+      });
+    });
+  });
+
+  if (!results.length) {
+    resultsDiv.innerHTML = '<p style="color:var(--gray-400);text-align:center;padding:24px;">Aucun résultat trouvé.</p>';
+    return;
+  }
+
+  resultsDiv.innerHTML = '<p style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">' + results.length + ' résultat(s) trouvé(s)</p>' +
+    results.map(function(r) {
+      var decColor = r.dec.label.includes('Admis') ? '#16a34a' :
+                     r.dec.label.includes('Repêch') ? '#d97706' :
+                     r.dec.label.includes('2ème') ? '#ea580c' : '#dc2626';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;' +
+             'padding:10px 14px;border:1px solid var(--gray-200);border-radius:10px;margin-bottom:8px;' +
+             'background:white;cursor:pointer;" ' +
+             'onclick="closeModal(\'modal-global-search\');showPage(\'saisie\');">' +
+             '<div>' +
+             '<div style="font-weight:700;color:var(--navy);">' + r.c.prenom + ' ' + r.c.nom + '</div>' +
+             '<div style="font-size:12px;color:var(--gray-500);">' +
+               r.exam.type + ' N°' + r.exam.num + ' — Série ' + r.serie +
+               ' | N° Table: ' + (r.c.ntable||'—') + ' | Anon: ' + (r.c.nanon||'—') +
+             '</div>' +
+             '</div>' +
+             '<div style="text-align:right;">' +
+             '<div style="font-size:18px;font-weight:800;color:var(--navy);">' + (r.moy !== null ? r.moy : '—') + '</div>' +
+             '<div style="font-size:11px;font-weight:700;color:' + decColor + ';">' + r.dec.label.replace(/[✅🔄❌🔁]/g,'').trim() + '</div>' +
+             '</div>' +
+             '</div>';
+    }).join('');
+}
+
+// ── DARK MODE ─────────────────────────────────────────────────
+function toggleDarkMode() {
+  var body = document.body;
+  var isDark = body.classList.toggle('dark-mode');
+  localStorage.setItem('gsms_dark_mode', isDark ? '1' : '0');
+  var btn = document.getElementById('dark-mode-btn');
+  if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+}
+
+function initDarkMode() {
+  if (localStorage.getItem('gsms_dark_mode') === '1') {
+    document.body.classList.add('dark-mode');
+    var btn = document.getElementById('dark-mode-btn');
+    if (btn) btn.textContent = '☀️';
+  }
+}
+
 function resetFilters() {
   var s  = document.getElementById('search-input');
   var fs = document.getElementById('filter-sexe');
@@ -2133,14 +2382,35 @@ function buildNotesGrid(examId, serie, existingNotes) {
   });
 }
 
-function colorNote(inp) {
-  const v = inp.value.trim().toLowerCase();
-  inp.classList.remove('note-ok','note-fail');
-  if (!v || v === 'absent') return;
-  const n = parseFloat(v);
-  if (!isNaN(n)) inp.classList.add(n >= 10 ? 'note-ok' : 'note-fail');
+function showValidationWarning(msg) {
+  var w = document.getElementById('validation-warning');
+  if (!w) {
+    w = document.createElement('div');
+    w.id = 'validation-warning';
+    w.style.cssText = 'position:fixed;top:70px;right:24px;z-index:99999;background:#f59e0b;color:white;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;font-family:DM Sans,Arial,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.2);';
+    document.body.appendChild(w);
+  }
+  w.textContent = '⚠️ ' + msg;
+  w.style.display = 'block';
+  clearTimeout(w._t);
+  w._t = setTimeout(function(){ w.style.display='none'; }, 2500);
 }
 
+function colorNote(inp) {
+  const v = inp.value.trim().toLowerCase();
+  // Validate range
+  const num = parseFloat(v);
+  if (!isNaN(num)) {
+    if (num > 20) { inp.value = 20; showValidationWarning('Note maximale : 20'); }
+    else if (num < 0) { inp.value = 0; showValidationWarning('Note minimale : 0'); }
+  }
+  inp.classList.remove('note-ok','note-warn','note-abs');
+  if (v === '' || v === '-') return;
+  if (v === 'abs' || v === 'absent') { inp.classList.add('note-abs'); return; }
+  const val = parseFloat(v);
+  if (isNaN(val) || val < 0 || val > 20) { inp.classList.add('note-warn'); }
+  else { inp.classList.add(val >= 10 ? 'note-ok' : 'note-warn'); }
+}
 function saveCandidat() {
   var editId = document.getElementById('edit-candidate-id').value;
   if (!currentUser) {
@@ -2427,6 +2697,42 @@ function initStats() {
       <td><strong>${r.moy}</strong></td>
     </tr>
   `).join('') || '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--gray-400);">Aucune donnée</td></tr>';
+  // ── CHARTS ──────────────────────────────────────────────────
+  setTimeout(function() {
+    // Chart 1: Taux par série (bar chart)
+    var ctxS = document.getElementById('chart-series');
+    if (ctxS && seriesData.length && typeof Chart !== 'undefined') {
+      if (ctxS._chartInstance) ctxS._chartInstance.destroy();
+      ctxS._chartInstance = new Chart(ctxS, {
+        type: 'bar',
+        data: {
+          labels: seriesData.map(function(s){ return s.serie; }),
+          datasets: [
+            { label: 'Admis', data: seriesData.map(function(s){ return s.a; }), backgroundColor: '#16a34a' },
+            { label: 'Repêchable', data: seriesData.map(function(s){ return s.r; }), backgroundColor: '#d97706' },
+            { label: '2ème Tour', data: seriesData.map(function(s){ return s.t||0; }), backgroundColor: '#ea580c' },
+            { label: 'Ajourné', data: seriesData.map(function(s){ return s.aj; }), backgroundColor: '#dc2626' },
+          ]
+        },
+        options: { responsive:true, plugins:{legend:{position:'bottom'}}, scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}} }
+      });
+    }
+    // Chart 2: Mentions (doughnut)
+    var ctxM = document.getElementById('chart-mentions');
+    var totalMentions = mentions.tb + mentions.b + mentions.ab + mentions.p;
+    if (ctxM && totalMentions && typeof Chart !== 'undefined') {
+      if (ctxM._chartInstance) ctxM._chartInstance.destroy();
+      ctxM._chartInstance = new Chart(ctxM, {
+        type: 'doughnut',
+        data: {
+          labels: ['Très Bien', 'Bien', 'Assez Bien', 'Passable'],
+          datasets: [{ data: [mentions.tb, mentions.b, mentions.ab, mentions.p],
+            backgroundColor: ['#7c3aed','#2563eb','#16a34a','#d97706'] }]
+        },
+        options: { responsive:true, plugins:{legend:{position:'bottom'}} }
+      });
+    }
+  }, 200);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2901,6 +3207,32 @@ function resetCoefs(type, serie) {
   renderCoefEditor(type, serie);
 }
 
+
+function changePassword() {
+  var account = document.getElementById('pwd-account').value;
+  var newPwd  = document.getElementById('pwd-new').value;
+  var confirm = document.getElementById('pwd-confirm').value;
+  var msg     = document.getElementById('pwd-msg');
+  function showMsg(text, ok) {
+    msg.style.display = 'block';
+    msg.textContent = text;
+    msg.style.background = ok ? '#dcfce7' : '#fee2e2';
+    msg.style.color = ok ? '#16a34a' : '#dc2626';
+    msg.style.border = '1px solid ' + (ok ? '#86efac' : '#fca5a5');
+  }
+  if (!newPwd || newPwd.length < 6) { showMsg('Mot de passe trop court (6 caractères minimum).', false); return; }
+  if (newPwd !== confirm) { showMsg('Les mots de passe ne correspondent pas.', false); return; }
+  if (USERS[account]) {
+    USERS[account].password = newPwd;
+    // Save to DB config for persistence
+    if (!DB.config.custom_passwords) DB.config.custom_passwords = {};
+    DB.config.custom_passwords[account] = newPwd;
+    saveDB();
+    showMsg('Mot de passe de "' + account + '" modifié avec succès !', true);
+    document.getElementById('pwd-new').value = '';
+    document.getElementById('pwd-confirm').value = '';
+  }
+}
 
 function updateSchoolDisplay(name) {
   if (!name) name = DB.config.school || '';
@@ -3473,38 +3805,7 @@ var currentUser = null;
 var appInitialized = false;
 
 // ── Permission system ────────────────────────────────────────────────────────
-var PERMISSIONS = {
-  admin: [
-    'view_notes','add_candidate','edit_candidate','delete_candidate',
-    'add_session','delete_session',
-    'view_config','edit_config','edit_coefs','add_mat','remove_mat',
-    'clear_history','export'
-  ],
-  teacher: [
-    'view_notes','add_candidate',
-    'add_session',
-    'export'
-  ],
-  censeur: [
-    'view_notes',
-    'add_session',
-    'export'
-  ]
-};
-
-function can(action) {
-  if (!currentUser) return false;
-  var perms = PERMISSIONS[currentUser.role] || [];
-  return perms.indexOf(action) !== -1;
-}
-
-function requireAdmin(action) {
-  if (!can(action)) {
-    showPermissionError("Action reservee a l'administrateur.");
-    return false;
-  }
-  return true;
-}
+// Old array permissions removed - using object-based PERMISSIONS below
 
 // Wire up login button ONCE the DOM is ready
 (function setupAuthListeners() {
@@ -3936,12 +4237,348 @@ function downloadCandidateCard() {
   printCandidateCard();
 }
 
+
+// ══════════════════════════════════════════════════════════════
+// RECHERCHE GLOBALE
+// ══════════════════════════════════════════════════════════════
+function printCurrentList() {
+  var examId = document.getElementById('sel-exam').value;
+  var serie  = document.getElementById('sel-serie').value;
+  var exam   = DB.exams.find(function(e){ return e.id===examId; });
+  if (!exam) { alert('Sélectionnez un examen.'); return; }
+  var cands  = getCandidats(examId, serie);
+  var mc     = getMatieresCoefs(examId, serie);
+  var school = DB.config.school || 'GSMS Excellence';
+  var win    = window.open('', '_blank');
+  var rows   = cands.map(function(c, i) {
+    var t = calcTotals(c.notes||[], mc.coefs, c.eps||'apte');
+    var dec = getDecision(t.moy, exam.type);
+    var color = dec.label.includes('Admis') ? '#16a34a' :
+                dec.label.includes('Repêch') ? '#d97706' :
+                dec.label.includes('2ème') ? '#ea580c' : '#dc2626';
+    return '<tr style="border-bottom:1px solid #e2e8f0;">' +
+      '<td style="padding:6px 8px;text-align:center;">'+(i+1)+'</td>' +
+      '<td style="padding:6px 8px;">'+(c.ntable||'')+'</td>' +
+      '<td style="padding:6px 8px;">'+(c.nanon||'')+'</td>' +
+      '<td style="padding:6px 8px;font-weight:600;">'+(c.prenom||'')+' '+(c.nom||'')+'</td>' +
+      '<td style="padding:6px 8px;">'+(c.classe||'')+'</td>' +
+      (c.notes||[]).map(function(n){ return '<td style="padding:6px 8px;text-align:center;">'+(n||'')+'</td>'; }).join('') +
+      '<td style="padding:6px 8px;text-align:center;font-weight:700;">'+(t.moy!==null?t.moy:'—')+'</td>' +
+      '<td style="padding:6px 8px;font-weight:700;color:'+color+';">'+dec.label.replace(/[✅🔄❌🔁]/g,'').trim()+'</td>' +
+      '</tr>';
+  }).join('');
+  var header = '<tr style="background:#0d1b3e;color:white;">' +
+    '<th style="padding:8px;">#</th><th>N°Tab</th><th>N°Anon</th><th>Candidat</th><th>Classe</th>' +
+    mc.matieres.map(function(m){ return '<th style="padding:8px;font-size:11px;">'+m.split(' ')[0]+'</th>'; }).join('') +
+    '<th>Moy</th><th>Décision</th></tr>';
+  win.document.write('<html><head><title>'+school+' — '+exam.type+' N°'+exam.num+' — Série '+serie+'</title>' +
+    '<style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px;}' +
+    'table{width:100%;border-collapse:collapse;}th{padding:8px;}' +
+    '@media print{button{display:none;}}</style></head><body>' +
+    '<h2 style="color:#0d1b3e;">'+school+'</h2>' +
+    '<h3>'+exam.type+' Blanc N°'+exam.num+' — '+exam.session+' — Série '+serie+'</h3>' +
+    '<p>Total: '+cands.length+' candidats — Imprimé le '+new Date().toLocaleDateString('fr-FR')+'</p>' +
+    '<button onclick="window.print()" style="margin-bottom:10px;padding:8px 16px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;">🖨️ Imprimer</button>' +
+    '<table>'+header+rows+'</table></body></html>');
+  win.document.close();
+}
+
+function goToCandidat() {
+  var modal = document.getElementById('modal-global-search');
+  if (modal) modal.style.display = 'none';
+  showPage('saisie');
+}
+
+function openGlobalSearch() {
+  openModal('modal-global-search');
+  setTimeout(function(){ var el=document.getElementById('global-search-input'); if(el){el.value='';el.focus();} }, 100);
+  document.getElementById('global-search-results').innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Tapez un nom, prénom, N° table ou N° anonymat...</div>';
+}
+
+function doGlobalSearch() {
+  var q = (document.getElementById('global-search-input').value||'').toLowerCase().trim();
+  var res = document.getElementById('global-search-results');
+  if (!q || q.length < 2) {
+    res.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Tapez au moins 2 caractères...</div>';
+    return;
+  }
+  var found = [];
+  DB.exams.forEach(function(exam) {
+    var series = exam.type === 'BAC' ? Object.keys(SERIES_BAC) : Object.keys(SERIES_BFEM);
+    series.forEach(function(serie) {
+      var cands = getCandidats(exam.id, serie);
+      var mc = getMatieresCoefs(exam.id, serie);
+      cands.forEach(function(c) {
+        var full = ((c.prenom||'')+' '+(c.nom||'')+' '+(c.ntable||'')+' '+(c.nanon||'')).toLowerCase();
+        if (full.includes(q)) {
+          var t = calcTotals(c.notes||[], mc.coefs, c.eps||'apte');
+          found.push({ c:c, exam:exam, serie:serie, moy:t.moy,
+            dec: getDecision(t.moy, exam.type) });
+        }
+      });
+    });
+  });
+
+  if (!found.length) {
+    res.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Aucun résultat pour "'+q+'"</div>';
+    return;
+  }
+
+  res.innerHTML = '<div style="color:var(--gray-500);font-size:12px;margin-bottom:8px;">'+found.length+' résultat(s) trouvé(s)</div>' +
+    found.map(function(f) {
+      var c=f.c, dec=f.dec;
+      var decColor = dec.label.includes('Admis')?'#16a34a':dec.label.includes('Repêch')?'#d97706':dec.label.includes('2ème')?'#ea580c':'#dc2626';
+      return '<div style="padding:10px 12px;border:1px solid var(--gray-200);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;background:var(--gray-50);">' +
+        '<div>' +
+        '<div style="font-weight:700;color:var(--navy);">' + (c.prenom||'') + ' ' + (c.nom||'') + '</div>' +
+        '<div style="font-size:11px;color:var(--gray-500);margin-top:2px;">' +
+          f.exam.type + ' N°' + f.exam.num + ' — ' + f.serie +
+          ' | Table: ' + (c.ntable||'—') + ' | Anon: ' + (c.nanon||'—') +
+        '</div></div>' +
+        '<div style="text-align:right;">' +
+        '<div style="font-weight:800;font-size:16px;color:var(--navy);">' + (f.moy!==null?f.moy:'—') + '/20</div>' +
+        '<div style="font-size:11px;color:'+decColor+';font-weight:700;">' + dec.label.replace(/[✅🔄❌🔁]/g,'').trim() + '</div>' +
+        '</div></div>';
+    }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODE SOMBRE
+// ══════════════════════════════════════════════════════════════
+function toggleDarkMode() {
+  var isDark = document.body.classList.toggle('dark-mode');
+  localStorage.setItem('gsms_dark_mode', isDark ? '1' : '0');
+  var btn = document.getElementById('dark-mode-btn');
+  if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+}
+
+// Restore dark mode preference
+(function() {
+  if (localStorage.getItem('gsms_dark_mode') === '1') {
+    document.body.classList.add('dark-mode');
+    var btn = document.getElementById('dark-mode-btn');
+    if (btn) btn.textContent = '☀️';
+  }
+})();
+
+// ══════════════════════════════════════════════════════════════
+// GRAPHIQUES (Canvas-based, no library needed)
+// ══════════════════════════════════════════════════════════════
+function drawBarChart(canvasId, labels, values, colors, title) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  var padL=50, padR=20, padT=40, padB=60;
+  var chartW = W-padL-padR, chartH = H-padT-padB;
+  var max = Math.max.apply(null, values) || 1;
+
+  ctx.clearRect(0,0,W,H);
+  // Title
+  ctx.fillStyle = '#0d1b3e';
+  ctx.font = 'bold 13px DM Sans, Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, W/2, 20);
+
+  // Grid lines
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1;
+  for (var g=0; g<=5; g++) {
+    var gy = padT + chartH - (g/5)*chartH;
+    ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(padL+chartW,gy); ctx.stroke();
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText(Math.round(max*g/5), padL-5, gy+3);
+  }
+
+  // Bars
+  var barW = Math.min(40, chartW/labels.length - 10);
+  var gap = chartW/labels.length;
+  labels.forEach(function(lbl, i) {
+    var x = padL + gap*i + gap/2 - barW/2;
+    var barH2 = values[i]/max * chartH;
+    var y = padT + chartH - barH2;
+
+    // Bar
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x,y,barW,barH2,4) : ctx.rect(x,y,barW,barH2);
+    ctx.fill();
+
+    // Value on top
+    ctx.fillStyle = '#0d1b3e';
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(values[i], x+barW/2, y-4);
+
+    // Label
+    ctx.fillStyle = '#475569';
+    ctx.font = '10px Arial';
+    ctx.fillText(lbl.length>8?lbl.slice(0,8)+'…':lbl, x+barW/2, padT+chartH+15);
+  });
+}
+
+function drawPieChart(canvasId, labels, values, colors) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W=canvas.width, H=canvas.height;
+  var cx=W/2-40, cy=H/2, r=Math.min(cx,cy)-20;
+  var total = values.reduce(function(a,b){return a+b;},0);
+  if (!total) return;
+
+  ctx.clearRect(0,0,W,H);
+  var startAngle = -Math.PI/2;
+  values.forEach(function(v,i) {
+    var slice = (v/total)*2*Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,r,startAngle,startAngle+slice);
+    ctx.closePath();
+    ctx.fillStyle = colors[i];
+    ctx.fill();
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Label inside
+    if (v/total > 0.05) {
+      var midA = startAngle + slice/2;
+      var lx = cx + Math.cos(midA)*r*0.65;
+      var ly = cy + Math.sin(midA)*r*0.65;
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(Math.round(v/total*100)+'%', lx, ly+4);
+    }
+    startAngle += slice;
+  });
+
+  // Legend
+  var lx = W-75, ly = 20;
+  labels.forEach(function(lbl,i) {
+    ctx.fillStyle = colors[i];
+    ctx.fillRect(lx, ly+i*22, 14, 14);
+    ctx.fillStyle = '#475569';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(lbl+' ('+values[i]+')', lx+18, ly+i*22+11);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// GESTION MOTS DE PASSE (Admin seulement)
+// ══════════════════════════════════════════════════════════════
+function openPasswordManager() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    showPermError('Gestion mots de passe : admin uniquement.', currentUser?currentUser.displayName:'');
+    return;
+  }
+  var html = '<div style="padding:16px;">' +
+    '<h3 style="margin-bottom:16px;color:var(--navy);">🔑 Gestion des mots de passe</h3>' +
+    Object.keys(USERS).map(function(u) {
+      return '<div style="margin-bottom:16px;padding:12px;border:1px solid var(--gray-200);border-radius:8px;background:var(--gray-50);">' +
+        '<div style="font-weight:700;margin-bottom:8px;">👤 ' + USERS[u].displayName + ' (' + u + ')</div>' +
+        '<div style="display:flex;gap:8px;">' +
+        '<input type="password" id="pwd-'+u+'" placeholder="Nouveau mot de passe"' +
+          'style="flex:1;padding:8px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:13px;">' +
+        '<button onclick="changePassword(\''+u+'\')" class="btn btn-sm btn-outline">Modifier</button>' +
+        '</div></div>';
+    }).join('') +
+    '</div>';
+  document.getElementById('pwd-manager-content').innerHTML = html;
+  openModal('modal-pwd-manager');
+}
+
+function changePassword(username) {
+  var inp = document.getElementById('pwd-' + username);
+  if (!inp) return;
+  var newPwd = inp.value.trim();
+  if (!newPwd || newPwd.length < 6) {
+    showValidationWarning('Mot de passe trop court (min. 6 caractères)');
+    return;
+  }
+  USERS[username].password = newPwd;
+  // Save to DB config
+  if (!DB.config.passwords) DB.config.passwords = {};
+  DB.config.passwords[username] = newPwd;
+  saveDB();
+  inp.value = '';
+  showSyncToast('Mot de passe de ' + USERS[username].displayName + ' modifié !');
+}
+
+// Restore saved passwords on boot
+(function restorePasswords() {
+  if (DB.config && DB.config.passwords) {
+    Object.keys(DB.config.passwords).forEach(function(u) {
+      if (USERS[u]) USERS[u].password = DB.config.passwords[u];
+    });
+  }
+})();
+
+// ══════════════════════════════════════════════════════════════
+// IMPRESSION LISTE CANDIDATS
+// ══════════════════════════════════════════════════════════════
+function printCandidateList() {
+  var examId = document.getElementById('sel-exam') ? document.getElementById('sel-exam').value : '';
+  var serie   = document.getElementById('sel-serie') ? document.getElementById('sel-serie').value : '';
+  var exam    = DB.exams.find(function(e){return e.id===examId;});
+  if (!exam) { alert('Sélectionnez un examen et une série.'); return; }
+
+  var cands = getCandidats(examId, serie);
+  var mc    = getMatieresCoefs(examId, serie);
+  var school = DB.config.school || 'GSMS Excellence';
+
+  var rows = cands.map(function(c, i) {
+    var t = calcTotals(c.notes||[], mc.coefs, c.eps||'apte');
+    var dec = getDecision(t.moy, exam.type);
+    var decColor = dec.label.includes('Admis')?'#16a34a':dec.label.includes('Repêch')?'#d97706':dec.label.includes('2ème')?'#ea580c':'#dc2626';
+    return '<tr style="background:'+(i%2?'#f8fafc':'white')+'">' +
+      '<td>'+(i+1)+'</td><td>'+(c.ntable||'')+'</td><td>'+(c.nanon||'')+'</td>' +
+      '<td style="text-align:left;font-weight:600;">'+(c.prenom||'')+' '+(c.nom||'')+'</td>' +
+      '<td>'+(c.classe||'')+'</td><td>'+(c.sexe||'')+'</td>' +
+      mc.matieres.map(function(m,j){ return '<td>'+((c.notes||[])[j]!==undefined&&(c.notes||[])[j]!==''?(c.notes||[])[j]:'—')+'</td>'; }).join('') +
+      '<td style="font-weight:800;">'+(t.moy!==null?t.moy:'—')+'</td>' +
+      '<td style="color:'+decColor+';font-weight:700;">'+dec.label.replace(/[✅🔄❌🔁]/g,'').trim()+'</td>' +
+      '</tr>';
+  }).join('');
+
+  var win = window.open('','_blank');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+    '<title>Liste '+serie+'</title>' +
+    '<style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px;}' +
+    'h1{font-size:16px;color:#0d1b3e;margin:0;}h2{font-size:13px;color:#2563eb;margin:4px 0 16px;}' +
+    'table{width:100%;border-collapse:collapse;}' +
+    'th{background:#0d1b3e;color:white;padding:6px 4px;text-align:center;font-size:10px;}' +
+    'td{padding:5px 4px;text-align:center;border-bottom:1px solid #e2e8f0;}' +
+    '@media print{body{margin:0;}}</style></head><body>' +
+    '<h1>'+school+'</h1>' +
+    '<h2>'+exam.type+' Blanc N°'+exam.num+' — Série '+serie+' ('+cands.length+' candidats)</h2>' +
+    '<table><thead><tr>' +
+    '<th>#</th><th>N°Table</th><th>N°Anon.</th><th>Candidat</th><th>Classe</th><th>Sexe</th>' +
+    mc.matieres.map(function(m){ return '<th>'+m.split(' ')[0]+'</th>'; }).join('') +
+    '<th>Moy.</th><th>Décision</th></tr></thead><tbody>'+rows+'</tbody></table>' +
+    '<p style="margin-top:16px;font-size:10px;color:#94a3b8;">Imprimé le '+new Date().toLocaleDateString('fr-FR')+'</p>' +
+    '</body></html>');
+  win.document.close();
+  setTimeout(function(){ win.print(); }, 500);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
 
 // ── APP BOOT SEQUENCE ──────────────────────────────────────────
 // Step 1: Restore saved custom coefs
+(function restoreCustomPasswords() {
+  if (DB.config && DB.config.custom_passwords) {
+    Object.keys(DB.config.custom_passwords).forEach(function(acc) {
+      if (USERS[acc]) USERS[acc].password = DB.config.custom_passwords[acc];
+    });
+  }
+})();
+
 (function restoreSavedCoefs() {
   Object.keys(SERIES_BAC).forEach(function(s) {
     if (DB.config['mats_bac_' + s])  SERIES_BAC[s].matieres = DB.config['mats_bac_' + s].slice();
@@ -3960,8 +4597,61 @@ if (DB.exams.length) {
   if (lbl) lbl.textContent = first.type + ' Blanc ' + first.num + ' — ' + first.session;
 }
 
-// Step 3: Check existing session — if none, auth screen stays visible
+// Step 3: Online/offline detection
+window.addEventListener('online',  function() { showNetworkToast(true);  });
+window.addEventListener('offline', function() { showNetworkToast(false); });
+
+function showNetworkToast(isOnline) {
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:70px;right:24px;z-index:99999;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;font-family:DM Sans,Arial,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
+  t.style.background = isOnline ? '#16a34a' : '#dc2626';
+  t.style.color = 'white';
+  t.textContent = isOnline ? '🌐 Connexion rétablie' : '📵 Hors connexion — données sauvegardées localement';
+  document.body.appendChild(t);
+  setTimeout(function(){ if(t.parentNode) t.remove(); }, isOnline ? 3000 : 5000);
+  if (isOnline && supabaseReady) {
+    setTimeout(function(){ loadFromSupabase(); }, 1000);
+  }
+}
+
+// Step 4: Init dark mode preference
+initDarkMode();
+
+// Step 5: Check existing session — if none, auth screen stays visible
 checkSession();
 </script>
+
+<!-- ══════════════════════════════════════ MODAL RECHERCHE GLOBALE -->
+<div class="modal-overlay" id="modal-global-search" style="display:none;">
+  <div class="modal" style="max-width:700px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <h3>🔍 Recherche globale</h3>
+      <button class="modal-close" onclick="closeModal('modal-global-search')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:16px;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <input type="text" id="global-search-input"
+        placeholder="Rechercher dans toutes les séries et examens..."
+        style="width:100%;padding:10px 14px;border:2px solid var(--blue);border-radius:10px;font-size:14px;outline:none;margin-bottom:12px;"
+        oninput="doGlobalSearch()">
+      <div id="global-search-results" style="overflow-y:auto;flex:1;font-size:13px;">
+        <div style="text-align:center;color:var(--gray-400);padding:40px;">
+          Tapez un nom, prénom, N° table ou N° anonymat...
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════ MODAL GESTION MOTS DE PASSE -->
+<div class="modal-overlay" id="modal-pwd-manager" style="display:none;">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <h3>🔑 Gestion des mots de passe</h3>
+      <button class="modal-close" onclick="closeModal('modal-pwd-manager')">✕</button>
+    </div>
+    <div class="modal-body" id="pwd-manager-content" style="padding:16px;">
+    </div>
+  </div>
+</div>
 </body>
 </html>
